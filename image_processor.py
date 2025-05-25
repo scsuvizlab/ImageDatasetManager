@@ -9,7 +9,6 @@ import shutil
 from PIL import Image
 from PyQt6.QtWidgets import QApplication, QProgressDialog, QMessageBox
 from PyQt6.QtCore import Qt
-from PyQt6.QtCore import Qt
 
 
 class ImageProcessor:
@@ -140,7 +139,6 @@ class ImageProcessor:
         self._copy_json_files(source_folder, output_folder)
         
         # Close progress dialog properly
-        progress.setValue(len(image_files))
         progress.close()
         progress.deleteLater()
         
@@ -235,6 +233,10 @@ class ImageProcessor:
                 error_files.append(error_msg)
                 print(f"DEBUG: Error: {error_msg}")
         
+        # Update JSON file with all variants
+        self._create_augmented_json(input_folder, output_folder, transform_ops)
+        
+        # Close progress dialog properly
         progress.close()
         progress.deleteLater()
         
@@ -246,53 +248,106 @@ class ImageProcessor:
             'same_folder': input_folder == output_folder
         }
     
-    def _check_rename_conflicts(self, folder_path, prefix, image_files, num_digits):
-        """Check if the new filenames would conflict with existing files"""
-        conflicts = []
-        existing_files = set(os.listdir(folder_path))
+    def mass_rename_images(self, folder_path, prefix, images_to_process=None, status_callback=None):
+        """
+        Rename images in a folder with a new prefix and sequential numbers
         
+        Args:
+            folder_path: Path to folder containing images
+            prefix: New prefix for filenames
+            images_to_process: List of image data dicts to process (if None, processes all)
+            status_callback: Function to call with status updates
+        
+        Returns:
+            dict: Results summary
+        """
+        if images_to_process is None:
+            # Process all images in folder
+            image_files = self.get_image_files(folder_path)
+            if not image_files:
+                return {'error': "No images found in the folder"}
+            image_files.sort()
+        else:
+            # Process only specified images
+            image_files = [img_data['filename'] for img_data in images_to_process]
+            if not image_files:
+                return {'error': "No images specified for processing"}
+        
+        # Calculate number of digits needed for zero-padding
+        num_digits = len(str(len(image_files)))
+        if num_digits < 3:
+            num_digits = 3  # Minimum 3 digits (001, 002, etc.)
+        
+        # Check for potential naming conflicts
+        conflicts = self._check_rename_conflicts(folder_path, prefix, image_files, num_digits)
+        if conflicts:
+            return {'error': f"Naming conflicts detected. These files already exist: {', '.join(conflicts[:5])}{'...' if len(conflicts) > 5 else ''}"}
+        
+        # Create progress dialog
+        progress = QProgressDialog("Renaming images...", "Cancel", 0, len(image_files), self.parent)
+        progress.setWindowTitle("Mass Rename")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        
+        renamed_images = 0
+        renamed_descriptions = 0
+        errors = []
+        old_to_new_mapping = {}
+        
+        # Rename files
         for i, old_filename in enumerate(image_files):
-            file_extension = os.path.splitext(old_filename)[1]
-            new_filename = f"{prefix}{str(i + 1).zfill(num_digits)}{file_extension}"
+            if progress.wasCanceled():
+                break
+                
+            progress.setValue(i)
+            progress.setLabelText(f"Renaming {old_filename}...")
+            QApplication.processEvents()
             
-            # Skip if this would be renaming to itself
-            if new_filename == old_filename:
-                continue
-                
-            if new_filename in existing_files:
-                conflicts.append(new_filename)
-        
-        return conflicts
-    
-    def _update_json_with_new_names(self, folder_path, old_to_new_mapping):
-        """Update JSON files with the new filenames"""
-        json_files = [f for f in os.listdir(folder_path) if f.endswith('.json')]
-        
-        for json_filename in json_files:
             try:
-                json_path = os.path.join(folder_path, json_filename)
+                # Generate new filename
+                file_extension = os.path.splitext(old_filename)[1]
+                new_filename = f"{prefix}{str(i + 1).zfill(num_digits)}{file_extension}"
                 
-                # Load JSON
-                with open(json_path, 'r') as f:
-                    json_data = json.load(f)
+                old_path = os.path.join(folder_path, old_filename)
+                new_path = os.path.join(folder_path, new_filename)
                 
-                # Update filenames in JSON
-                updated_data = []
-                for item in json_data:
-                    if isinstance(item, dict) and 'fileName' in item:
-                        old_name = item['fileName']
-                        if old_name in old_to_new_mapping:
-                            item['fileName'] = old_to_new_mapping[old_name]
-                        updated_data.append(item)
-                    else:
-                        updated_data.append(item)
+                # Rename image file
+                os.rename(old_path, new_path)
+                renamed_images += 1
+                old_to_new_mapping[old_filename] = new_filename
                 
-                # Save updated JSON
-                with open(json_path, 'w') as f:
-                    json.dump(updated_data, f, indent=2)
-                    
+                # Rename corresponding description file if it exists
+                old_desc_filename = os.path.splitext(old_filename)[0] + '.txt'
+                new_desc_filename = os.path.splitext(new_filename)[0] + '.txt'
+                old_desc_path = os.path.join(folder_path, old_desc_filename)
+                new_desc_path = os.path.join(folder_path, new_desc_filename)
+                
+                if os.path.exists(old_desc_path):
+                    os.rename(old_desc_path, new_desc_path)
+                    renamed_descriptions += 1
+                
+                if status_callback:
+                    status_callback(f"Renamed {renamed_images}/{len(image_files)} images...")
+                
             except Exception as e:
-                print(f"Error updating JSON file {json_filename}: {str(e)}")
+                error_msg = f"Failed to rename {old_filename}: {str(e)}"
+                errors.append(error_msg)
+                print(error_msg)
+        
+        # Update JSON files with new names
+        self._update_json_with_new_names(folder_path, old_to_new_mapping)
+        
+        # Close progress dialog properly
+        progress.close()
+        progress.deleteLater()
+        
+        return {
+            'renamed_images': renamed_images,
+            'renamed_descriptions': renamed_descriptions,
+            'errors': errors,
+            'total_images': len(image_files)
+        }
     
     def _resize_image(self, img, target_size, keep_aspect):
         """Resize image according to specified parameters"""
@@ -407,7 +462,7 @@ class ImageProcessor:
                     img_ext = os.path.splitext(original_filename)[1]
                     description = item['description']
                     
-                    # Add original
+                    # Always add original (it exists in both cases)
                     new_json_data.append({
                         'fileName': original_filename,
                         'description': description
@@ -416,13 +471,15 @@ class ImageProcessor:
                     # Add transformed versions
                     for transform_key, transform_name in transform_list:
                         if transform_key == 'flip':
-                            suffix = "_flipped"
+                            suffix = "_flipHor"
                         elif transform_key == 'rot90l':
-                            suffix = "_rot90l"
+                            suffix = "_rotLeft"
                         elif transform_key == 'rot90r':
-                            suffix = "_rot90r"
+                            suffix = "_rotRight"
                         elif transform_key == 'rot180':
-                            suffix = "_rot180"
+                            suffix = "_flipVert"
+                        elif transform_key == 'duplicate':
+                            suffix = "_dup"
                         
                         new_filename = f"{base_name}{suffix}{img_ext}"
                         new_json_data.append({
@@ -431,10 +488,64 @@ class ImageProcessor:
                         })
             
             # Save updated JSON
-            base_json_name = os.path.splitext(json_files[0])[0]
-            new_json_path = os.path.join(output_folder, f"{base_json_name}_augmented.json")
+            if input_folder == output_folder:
+                # Same folder - update the original JSON file
+                new_json_path = json_path
+            else:
+                # Different folder - create new augmented JSON
+                base_json_name = os.path.splitext(json_files[0])[0]
+                new_json_path = os.path.join(output_folder, f"{base_json_name}_augmented.json")
+                
             with open(new_json_path, 'w') as f:
                 json.dump(new_json_data, f, indent=2)
                 
         except Exception as e:
             print(f"Error processing JSON file: {str(e)}")
+    
+    def _check_rename_conflicts(self, folder_path, prefix, image_files, num_digits):
+        """Check if the new filenames would conflict with existing files"""
+        conflicts = []
+        existing_files = set(os.listdir(folder_path))
+        
+        for i, old_filename in enumerate(image_files):
+            file_extension = os.path.splitext(old_filename)[1]
+            new_filename = f"{prefix}{str(i + 1).zfill(num_digits)}{file_extension}"
+            
+            # Skip if this would be renaming to itself
+            if new_filename == old_filename:
+                continue
+                
+            if new_filename in existing_files:
+                conflicts.append(new_filename)
+        
+        return conflicts
+    
+    def _update_json_with_new_names(self, folder_path, old_to_new_mapping):
+        """Update JSON files with the new filenames"""
+        json_files = [f for f in os.listdir(folder_path) if f.endswith('.json')]
+        
+        for json_filename in json_files:
+            try:
+                json_path = os.path.join(folder_path, json_filename)
+                
+                # Load JSON
+                with open(json_path, 'r') as f:
+                    json_data = json.load(f)
+                
+                # Update filenames in JSON
+                updated_data = []
+                for item in json_data:
+                    if isinstance(item, dict) and 'fileName' in item:
+                        old_name = item['fileName']
+                        if old_name in old_to_new_mapping:
+                            item['fileName'] = old_to_new_mapping[old_name]
+                        updated_data.append(item)
+                    else:
+                        updated_data.append(item)
+                
+                # Save updated JSON
+                with open(json_path, 'w') as f:
+                    json.dump(updated_data, f, indent=2)
+                    
+            except Exception as e:
+                print(f"Error updating JSON file {json_filename}: {str(e)}")
