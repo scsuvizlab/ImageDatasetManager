@@ -1,206 +1,271 @@
 # Image Gallery with Descriptions
 
-A comprehensive tool for organizing, managing, and auto-generating descriptions for AI training datasets.
-
-![Image Gallery Tool](https://via.placeholder.com/800x450.png?text=Image+Gallery+with+Descriptions)
+A comprehensive tool for organizing, managing, and AI-enhancing image datasets for machine learning training.
 
 ## Overview
 
-This application helps machine learning practitioners and AI artists manage image datasets by providing intuitive tools for:
-- Viewing and organizing collections of images
-- Creating and managing text descriptions for each image
-- Automatically generating high-quality descriptions using Florence 2 AI
-- Preprocessing images to specific dimensions and formats for AI training
-- Preserving keywords across descriptions
-- Batch operations for efficient dataset management
+This application provides a complete workflow for dataset preparation, combining manual organization tools with AI-powered description enhancement. Built with a clean tabbed interface, it supports multi-selection operations and integrates with oLLama for intelligent description rephrasing.
 
-Perfect for preparing training data for image generation models like Stable Diffusion, DALL-E, and other diffusion models.
+**Perfect for preparing training data for image generation models like Stable Diffusion, DALL-E, and other diffusion models.**
+
+![GUI Screenshot](ig_gui1.png)
+![GUI Screenshot](ig_gui2.png)
 
 ## Features
 
-### Image Management
-- 📂 Browse and load image collections from any folder
-- 🖼️ Preview images with adjustable display size
-- 🔍 Navigate through collections with intuitive controls
-- 🗑️ Remove images from the dataset with right-click delete
+### 🖼️ **Gallery Management**
+- **Multi-Selection Support**: Ctrl+click and Shift+click for batch operations
+- **Real-time Preview**: Large image display with instant description editing
+- **Smart Loading**: Automatically loads descriptions from .txt files or consolidated JSON
+- **Flexible Save Options**: Individual .txt files + consolidated JSON export
+- **Context Menu**: Right-click to remove images from dataset
 
-### Description Management
-- ✏️ Edit descriptions with real-time updates
-- 💾 Auto-save to both individual text files and a consolidated JSON
-- 🏷️ Add keywords to all descriptions simultaneously
-- 🤖 Generate AI descriptions with Florence 2 vision model
-- 🔑 Preserve common keyword prefixes between images
+### 🛠️ **Image Processing (Utils Tab - Left Panel)**
+- **Fix Images**: Resize, pad, and standardize image dimensions (512/1024/2048px)
+- **Mass Rename**: Batch rename with custom prefixes and sequential numbering
+- **Dataset Augmentation**: Create duplicates with transformations:
+  - Simple duplication (`_dup` suffix)
+  - Horizontal flip (`_flipHor`)
+  - 90° rotations (`_rotLeft`, `_rotRight`)
+  - 180° rotation (`_flipVert`)
 
-### Image Processing
-- 📏 Resize images to standard dimensions (512, 1024, or 2048 pixels)
-- 🟦 Create perfect squares with intelligent padding
-- 🔄 Maintain aspect ratios if desired
-- ✅ Validate images for corrupt files and minimum size
-- 📁 Output to a separate folder to preserve originals
+### 🤖 **AI Description Enhancement (Utils Tab - Right Panel)**
+- **oLLama Integration**: Connect to local oLLama server for description rephrasing
+- **Custom Prompts**: Full control over AI rephrasing instructions
+- **Test Interface**: Preview AI output before batch processing
+- **Batch Processing**: Rephrase descriptions while preserving names and details
+- **WSL Support**: Configurable server/port for cross-platform development
 
-### User Interface
-- 🎨 Clean, intuitive split-pane interface
-- 🔤 Adjustable font sizes with keyboard shortcuts
-- 📊 Progress indicators for batch operations
-- 📋 Context menu for quick actions
-- 🌐 Comprehensive status updates
+### 🎯 **Scope-Aware Operations**
+Every utility respects your selection:
+- **"All Images"**: Process entire dataset
+- **"Selected Only"**: Process only highlighted images
+- **Smart UI**: Options auto-enable/disable based on selection state
 
 ## Requirements
 
-- Python 3.8 or higher
-- Tkinter (usually included with Python)
-- PIL/Pillow for image processing
-- Florence 2 for AI description generation (optional)
+- **Python 3.8+**
+- **PyQt6**: Modern GUI framework
+- **PIL/Pillow**: Image processing
+- **Requests**: oLLama API communication (optional)
 
-### Dependencies
+### Installation
 ```bash
-pip install pillow
+pip install PyQt6 pillow requests
 ```
 
-For AI-powered descriptions:
+### For oLLama Integration (Optional)
 ```bash
-pip install torch transformers
+# Install oLLama (https://ollama.ai)
+# Then pull a model:
+ollama pull llama3.2:3b
+ollama serve
 ```
 
-## Installation
-
-1. Clone or download this repository
-2. Ensure Python and required dependencies are installed
-3. Run the script:
+## Quick Start
 
 ```bash
-python data_descriptor_exp2.py
+# Clone and run
+git clone [repository]
+cd image-gallery
+python image_gallery.py
 ```
 
 ## Usage Guide
 
-### Basic Operations
+### Basic Workflow
 
-#### Loading Images
-1. Click "Select Folder" to choose a directory containing images
-2. Images will be loaded along with any existing descriptions from .txt files or .json
+1. **Load Dataset**: Gallery tab → "Select Folder"
+2. **Review & Edit**: Browse images, edit descriptions manually
+3. **Process Images**: Utils tab → Fix dimensions, rename, or duplicate
+4. **AI Enhancement**: Utils tab → Rephrase descriptions with oLLama
+5. **Save Results**: Gallery tab → "Save Descriptions"
 
-#### Editing Descriptions
-1. Select an image from the list
-2. Edit the description in the text area on the right
-3. Changes are automatically saved to memory (click "Save Descriptions" to write to disk)
+### Multi-Selection Operations
 
-#### Saving Descriptions
-1. Click "Save Descriptions" to write all descriptions to:
-   - Individual .txt files (one per image)
-   - A consolidated JSON file for easy loading
+- **Select Multiple**: `Ctrl+Click` individual images or `Shift+Click` ranges
+- **Scope Selection**: Choose "All" or "Selected Only" for each operation
+- **Visual Feedback**: Green status bar shows current selection
 
-### Image Processing
+### oLLama Setup
 
-The "Fix Images" feature prepares your images for AI training by ensuring consistent dimensions and formats.
-
-1. Click "Fix Images"
-2. Configure options in the dialog:
-   - Target Size: Choose 512, 1024, or 2048 pixels for the longest dimension
-   - Aspect Ratio: Make square with padding or keep original aspect ratio
-   - Output Folder: Choose where processed images will be saved
-3. Click "OK" to process
-
-Images that don't meet validation requirements (minimum 512x512 pixels, not corrupt) will be skipped with detailed error reporting.
-
-### Working with Keywords
-
-To add a common term to all descriptions:
-
-1. Enter the keyword in the "Key Word String" field
-2. Press Enter to append it to all descriptions
-
-The system automatically maintains space separation and preserves existing description text.
-
-### Generating AI Descriptions with Florence 2
-
-#### Setup
-1. Click "Florence Settings"
-2. Browse to select your Florence 2 script location
-3. Choose a prompt template:
-   - General description (default)
-   - Character focus (anatomy, pose, clothing)
-   - Art style analysis
-   - Environment/scene details
-4. Or create a custom prompt
-5. Click "Save"
-
-#### Generating Descriptions
-1. Click "Generate Descriptions"
-2. Choose whether to replace all descriptions or only fill in missing ones
-3. Monitor progress in the dialog
-4. Review results when complete
-
-#### Keyword Preservation
-If all your images share a common keyword at the beginning of their descriptions (e.g., "necronomicon"), this prefix will be automatically detected and preserved when generating new descriptions.
-
-## Florence 2 Integration
-
-### Setting Up Florence 2
-
-This application can integrate with Microsoft's Florence 2 vision model to generate high-quality image descriptions.
-
-1. Install the Florence 2 requirements:
+#### Standard Setup (Linux/Windows)
 ```bash
-pip install torch transformers accelerate
+ollama serve
+# Server: localhost, Port: 11434
 ```
 
-2. Set up the describe_image.py script (included in this repository)
-3. Configure the script path in the Florence Settings dialog
+#### WSL Setup (Linux on Windows)
+```powershell
+# In Windows PowerShell:
+$env:OLLAMA_HOST="0.0.0.0:11434"
+ollama serve
 
-### Customizing Prompts
+# In WSL, find Windows host IP:
+ip route show | grep default
+# Use that IP (e.g., 172.23.64.1) in the Server field
+```
 
-The quality and focus of generated descriptions can be controlled by customizing the prompt. We provide several templates:
+### File Format Support
 
-- **General Description**: Broad descriptions of the overall image
-- **Character Focus**: Detailed descriptions of characters, focusing on pose, clothing, and appearance
-- **Art Style Analysis**: Analysis of artistic techniques, style, and influences
-- **Environment/Scene**: Details about the setting, mood, and environment elements
+**Input Formats:**
+- **Images**: .jpg, .jpeg, .png, .webp
+- **Descriptions**: Individual .txt files or consolidated .json
 
-These prompts can significantly improve the relevance of descriptions for your specific needs.
+**Output Formats:**
+- **Individual**: `imagename.txt` per image
+- **Consolidated**: `foldername_descriptions.json`
+- **Processed Images**: Same format as input, optimized for training
+
+## Advanced Features
+
+### Custom AI Prompts
+
+Default rephrasing prompt:
+```
+Rephrase the following image description. Keep all specific names, details, and technical terms exactly the same. Only change the phrasing and sentence structure to make it sound different while preserving all information. Return only the rephrased description with no additional text:
+
+{description}
+```
+
+**Customize for your needs:**
+- Art style analysis
+- Character-focused descriptions  
+- Technical specifications
+- Creative variations
+
+### Batch Keywords
+
+Add common elements to all descriptions:
+1. Enter keyword in "Key Word String" field
+2. Press Enter to append to all descriptions
+3. Maintains proper spacing automatically
+
+### Image Validation
+
+**Automatically detects and reports:**
+- Corrupt or unreadable images
+- Images below minimum size (512x512)
+- Format compatibility issues
+
+## Architecture
+
+### Modular Design
+```
+image_gallery/
+├── image_gallery.py      # Main application (300 lines)
+├── data_manager.py       # Data loading/saving (200 lines)  
+├── image_processor.py    # Image processing (350 lines)
+├── dialogs.py           # UI dialogs (150 lines)
+└── README.md            # Documentation
+```
+
+### Key Benefits
+- **Clean Separation**: UI, data, and processing logic separated
+- **Easy Extension**: Add new features without complexity
+- **Robust Error Handling**: Comprehensive validation and reporting
+- **Cross-Platform**: Works on Windows, Linux, and WSL
 
 ## Keyboard Shortcuts
 
-- **Ctrl++**: Increase font size
-- **Ctrl+-**: Decrease font size
-- **Ctrl+0**: Reset font size to default
+- **Ctrl + +**: Increase font size
+- **Ctrl + -**: Decrease font size
+- **Ctrl + 0**: Reset font size to default
+
+## Common Workflows
+
+### Small Dataset Expansion
+1. Load 10-20 base images with descriptions
+2. Use "Create Duplicates" with horizontal flip
+3. Optionally add rotations for abstract content
+4. Result: 20-80 images with preserved descriptions
+
+### Description Variety
+1. Load dataset with repetitive descriptions
+2. Select images with similar descriptions
+3. Use oLLama "Rephrase Selected Only"
+4. Review and save enhanced dataset
+
+### Dataset Standardization
+1. Load mixed-size images
+2. Use "Fix Images" with 1024px target
+3. Choose square padding for training consistency
+4. Export to separate folder for training
 
 ## Troubleshooting
 
-### Image Loading Issues
-- Ensure images are in supported formats (.jpg, .jpeg, .png, .webp)
-- Check file permissions
-- Try with a smaller batch of images first
+### oLLama Connection Issues
 
-### Florence 2 Issues
-- Verify your Florence script path is correct
-- Ensure all dependencies are installed
-- Check console output for detailed error messages
-- If generation is slow, consider using a GPU for acceleration
+**"Cannot connect to oLLama"**
+```bash
+# Check if oLLama is running
+ollama list
 
-### Common Errors
-- **"Florence 2 Error"**: Check that your Florence 2 script exists and has the correct permissions
-- **"Invalid or corrupt image"**: The image file may be damaged or in an unsupported format
-- **"Image too small"**: Images must be at least 512x512 pixels for processing
+# Start if needed
+ollama serve
 
-## Future Improvements
+# For WSL users - bind to all interfaces
+$env:OLLAMA_HOST="0.0.0.0:11434"
+ollama serve
+```
 
-Planned enhancements include:
-- Multi-select image operations
-- Advanced filtering and sorting
-- Batch renaming capabilities
-- Integration with other vision models
-- Export to various dataset formats
+**"No models found"**
+```bash
+# Install a model
+ollama pull llama3.2:3b
+ollama pull llama3:8b
+```
+
+### Common Issues
+
+**Images not loading**: Check file permissions and formats
+**Description encoding**: Files saved with UTF-8 encoding
+**Memory usage**: Close application between large datasets
+**WSL networking**: Use Windows host IP instead of localhost
+
+## Best Practices
+
+### Dataset Organization
+- Use consistent naming conventions before mass operations
+- Keep original images separate from processed versions
+- Backup description files before AI processing
+- Test operations on small batches first
+
+### AI Enhancement
+- Always test prompts with sample descriptions
+- Review AI output before accepting batch changes
+- Keep prompt instructions specific and clear
+- Consider different models for different content types
+
+### Performance Tips
+- Process images in batches of 50-100 for large datasets
+- Use "Selected Only" for targeted operations
+- Close other applications during intensive processing
+- Save work frequently during long sessions
+
+## Future Enhancements
+
+**Planned Features:**
+- Additional AI model integrations (OpenAI, Claude)
+- Advanced filtering and search capabilities
+- Export to ML framework formats (HuggingFace, COCO)
+- Automated quality scoring and duplicate detection
 - Cloud storage integration
+- Plugin system for custom transformations
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit pull requests or suggest improvements.
+Contributions welcome! Areas of interest:
+- Additional image transformations
+- New AI model integrations
+- Export format support
+- UI/UX improvements
+- Performance optimizations
 
 ## License
 
-This project is open source and available under the MIT License.
+Open source under the MIT License.
 
 ---
 
-*This tool was developed to streamline the process of preparing high-quality datasets for image generation AI models.*
+**Built for the AI training community** - streamlining the dataset preparation process with intelligent tools and flexible workflows.
