@@ -1,243 +1,359 @@
 #!/usr/bin/env python3
 """
-Dialog classes for Image Gallery application
+Dialog windows for the Image Gallery application
 """
 
 import os
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QRadioButton, 
-    QLabel, QPushButton, QFileDialog, QMessageBox, QCheckBox
+    QButtonGroup, QPushButton, QLabel, QLineEdit, QFileDialog,
+    QCheckBox, QMessageBox
 )
+from PyQt6.QtCore import Qt
 
 
 class ImageFixDialog(QDialog):
-    """Dialog for configuring image processing options"""
+    """Dialog for configuring image fixing/resizing options"""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, default_folder=None):
         super().__init__(parent)
-        self.setWindowTitle("Fix Images Options")
-        self.resize(450, 420)
-        
-        # Variables
-        self.result = None
-        self.size = 1024
-        self.keep_aspect = False
-        self.output_folder = ""
-        
+        self.default_folder = default_folder
+        self.result = {}
         self.setup_ui()
         
     def setup_ui(self):
-        main_layout = QVBoxLayout(self)
+        self.setWindowTitle("Fix Images")
+        self.setModal(True)
+        self.resize(500, 400)
         
-        # Size selection
-        size_group = QGroupBox("Target Size (longest dimension)")
-        size_layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
         
-        self.size_512_radio = QRadioButton("512 pixels")
-        self.size_1024_radio = QRadioButton("1024 pixels")
-        self.size_2048_radio = QRadioButton("2048 pixels")
+        # Source folder selection
+        source_group = QGroupBox("Source Folder")
+        source_layout = QVBoxLayout(source_group)
         
-        # Set initial selection
-        self.size_1024_radio.setChecked(True)
+        source_folder_layout = QHBoxLayout()
+        source_folder_layout.addWidget(QLabel("Source Folder:"))
+        self.source_folder_entry = QLineEdit()
+        if self.default_folder:
+            self.source_folder_entry.setText(self.default_folder)
+        self.source_browse_btn = QPushButton("Browse...")
+        self.source_browse_btn.clicked.connect(self.browse_source_folder)
         
-        size_layout.addWidget(self.size_512_radio)
-        size_layout.addWidget(self.size_1024_radio)
-        size_layout.addWidget(self.size_2048_radio)
-        size_group.setLayout(size_layout)
-        
-        # Aspect ratio option
-        aspect_group = QGroupBox("Aspect Ratio")
-        aspect_layout = QVBoxLayout()
-        
-        self.aspect_square_radio = QRadioButton("Make square (pad with white)")
-        self.aspect_original_radio = QRadioButton("Keep original aspect ratio")
-        
-        # Set initial selection
-        self.aspect_square_radio.setChecked(True)
-        
-        aspect_layout.addWidget(self.aspect_square_radio)
-        aspect_layout.addWidget(self.aspect_original_radio)
-        aspect_group.setLayout(aspect_layout)
-        
-        # Output folder selection
-        folder_group = QGroupBox("Output Folder")
-        folder_layout = QHBoxLayout()
-        
-        self.folder_label = QLabel("No folder selected")
-        folder_browse_button = QPushButton("Browse...")
-        folder_browse_button.clicked.connect(self.select_folder)
-        
-        folder_layout.addWidget(self.folder_label, 1)
-        folder_layout.addWidget(folder_browse_button)
-        folder_group.setLayout(folder_layout)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        cancel_button = QPushButton("Cancel")
-        ok_button = QPushButton("OK")
-        
-        cancel_button.clicked.connect(self.reject)
-        ok_button.clicked.connect(self.accept_dialog)
-        
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_button)
-        button_layout.addWidget(ok_button)
-        
-        # Add all widgets to main layout
-        main_layout.addWidget(size_group)
-        main_layout.addWidget(aspect_group)
-        main_layout.addWidget(folder_group)
-        main_layout.addSpacing(20)
-        main_layout.addLayout(button_layout)
-        
-    def select_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
-        if folder:
-            self.output_folder = folder
-            self.folder_label.setText(os.path.basename(folder) or folder)
-    
-    def accept_dialog(self):
-        if not self.output_folder:
-            QMessageBox.critical(self, "Error", "Please select an output folder")
-            return
-            
-        # Get selected size
-        if self.size_512_radio.isChecked():
-            self.size = 512
-        elif self.size_1024_radio.isChecked():
-            self.size = 1024
-        elif self.size_2048_radio.isChecked():
-            self.size = 2048
-            
-        # Get aspect ratio setting
-        self.keep_aspect = self.aspect_original_radio.isChecked()
-            
-        self.result = {
-            'size': self.size,
-            'keep_aspect': self.keep_aspect,
-            'output_folder': self.output_folder
-        }
-        self.accept()
-
-
-class ImageDuplicateDialog(QDialog):
-    """Dialog for configuring image duplication options"""
-    
-    def __init__(self, parent=None, initial_input_folder=""):
-        super().__init__(parent)
-        self.setWindowTitle("Create Image Duplicates")
-        self.resize(450, 350)
-        
-        # Variables - use initial_input_folder parameter
-        self.result = None
-        self.input_folder = initial_input_folder
-        self.output_folder = ""
-        
-        self.setup_ui()
-        
-    def setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        
-        # Input folder selection
-        input_group = QGroupBox("Source Folder")
-        input_layout = QHBoxLayout()
-        
-        self.input_folder_label = QLabel("No folder selected")
-        input_browse_button = QPushButton("Browse...")
-        input_browse_button.clicked.connect(self.select_input_folder)
-        
-        # Set initial folder if provided
-        if self.input_folder:
-            self.input_folder_label.setText(os.path.basename(self.input_folder) or self.input_folder)
-        
-        input_layout.addWidget(self.input_folder_label, 1)
-        input_layout.addWidget(input_browse_button)
-        input_group.setLayout(input_layout)
+        source_folder_layout.addWidget(self.source_folder_entry, 1)
+        source_folder_layout.addWidget(self.source_browse_btn)
+        source_layout.addLayout(source_folder_layout)
         
         # Output folder selection
         output_group = QGroupBox("Output Folder")
-        output_layout = QHBoxLayout()
+        output_layout = QVBoxLayout(output_group)
         
-        self.output_folder_label = QLabel("No folder selected")
-        output_browse_button = QPushButton("Browse...")
-        output_browse_button.clicked.connect(self.select_output_folder)
+        # Same folder checkbox
+        self.same_folder_check = QCheckBox("Save to same folder as source")
+        self.same_folder_check.setChecked(True)  # Default to same folder
+        self.same_folder_check.toggled.connect(self.toggle_output_folder)
+        output_layout.addWidget(self.same_folder_check)
         
-        output_layout.addWidget(self.output_folder_label, 1)
-        output_layout.addWidget(output_browse_button)
-        output_group.setLayout(output_layout)
+        # Output folder selection (initially disabled)
+        output_folder_layout = QHBoxLayout()
+        output_folder_layout.addWidget(QLabel("Output Folder:"))
+        self.output_folder_entry = QLineEdit()
+        if self.default_folder:
+            self.output_folder_entry.setText(self.default_folder)
+        self.output_folder_entry.setEnabled(False)
         
-        # Transformation options
-        transform_group = QGroupBox("Transformations to Create")
-        transform_layout = QVBoxLayout()
+        self.output_browse_btn = QPushButton("Browse...")
+        self.output_browse_btn.clicked.connect(self.browse_output_folder)
+        self.output_browse_btn.setEnabled(False)
         
-        # Add helpful note
-        note_label = QLabel("Select transformations, or leave all unchecked to create simple duplicates with '_dup' suffix:")
-        note_label.setStyleSheet("QLabel { color: #666; font-style: italic; }")
-        note_label.setWordWrap(True)
-        transform_layout.addWidget(note_label)
+        output_folder_layout.addWidget(self.output_folder_entry, 1)
+        output_folder_layout.addWidget(self.output_browse_btn)
+        output_layout.addLayout(output_folder_layout)
         
-        self.flip_horizontal_cb = QCheckBox("Flip Horizontally")
-        self.rotate_90_left_cb = QCheckBox("Rotate 90° Left")
-        self.rotate_90_right_cb = QCheckBox("Rotate 90° Right") 
-        self.rotate_180_cb = QCheckBox("Rotate 180°")
+        # Image size settings
+        size_group = QGroupBox("Image Size")
+        size_layout = QVBoxLayout(size_group)
         
-        # Set some defaults
-        self.flip_horizontal_cb.setChecked(True)
+        self.size_group = QButtonGroup()
+        self.size_512 = QRadioButton("512x512")
+        self.size_1024 = QRadioButton("1024x1024")
+        self.size_2048 = QRadioButton("2048x2048")
+        self.size_1024.setChecked(True)  # Default
         
-        transform_layout.addWidget(self.flip_horizontal_cb)
-        transform_layout.addWidget(self.rotate_90_left_cb)
-        transform_layout.addWidget(self.rotate_90_right_cb)
-        transform_layout.addWidget(self.rotate_180_cb)
-        transform_group.setLayout(transform_layout)
+        self.size_group.addButton(self.size_512)
+        self.size_group.addButton(self.size_1024)
+        self.size_group.addButton(self.size_2048)
+        
+        size_layout.addWidget(self.size_512)
+        size_layout.addWidget(self.size_1024)
+        size_layout.addWidget(self.size_2048)
+        
+        # Aspect ratio settings
+        aspect_group = QGroupBox("Aspect Ratio")
+        aspect_layout = QVBoxLayout(aspect_group)
+        
+        self.aspect_group = QButtonGroup()
+        self.keep_aspect = QRadioButton("Keep aspect ratio (resize longest dimension)")
+        self.square_aspect = QRadioButton("Make square (pad with white background)")
+        self.keep_aspect.setChecked(True)  # Default
+        
+        self.aspect_group.addButton(self.keep_aspect)
+        self.aspect_group.addButton(self.square_aspect)
+        
+        aspect_layout.addWidget(self.keep_aspect)
+        aspect_layout.addWidget(self.square_aspect)
         
         # Buttons
         button_layout = QHBoxLayout()
-        cancel_button = QPushButton("Cancel")
-        ok_button = QPushButton("Create Duplicates")
+        self.ok_btn = QPushButton("Process Images")
+        self.cancel_btn = QPushButton("Cancel")
         
-        cancel_button.clicked.connect(self.reject)
-        ok_button.clicked.connect(self.accept_dialog)
+        self.ok_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
         
         button_layout.addStretch()
-        button_layout.addWidget(cancel_button)
-        button_layout.addWidget(ok_button)
+        button_layout.addWidget(self.ok_btn)
+        button_layout.addWidget(self.cancel_btn)
         
-        # Add all widgets to main layout
-        main_layout.addWidget(input_group)
-        main_layout.addWidget(output_group)
-        main_layout.addWidget(transform_group)
-        main_layout.addSpacing(20)
-        main_layout.addLayout(button_layout)
+        # Add all groups to main layout
+        layout.addWidget(source_group)
+        layout.addWidget(output_group)
+        layout.addWidget(size_group)
+        layout.addWidget(aspect_group)
+        layout.addLayout(button_layout)
+    
+    def toggle_output_folder(self, checked):
+        """Enable/disable output folder selection based on checkbox"""
+        self.output_folder_entry.setEnabled(not checked)
+        self.output_browse_btn.setEnabled(not checked)
         
-    def select_input_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Source Folder")
-        if folder:
-            self.input_folder = folder
-            self.input_folder_label.setText(os.path.basename(folder) or folder)
+        if checked and self.source_folder_entry.text():
+            # Set output to same as source
+            self.output_folder_entry.setText(self.source_folder_entry.text())
     
-    def select_output_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
+    def browse_source_folder(self):
+        """Browse for source folder"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Source Folder", 
+            self.source_folder_entry.text() or self.default_folder or ""
+        )
         if folder:
-            self.output_folder = folder
-            self.output_folder_label.setText(os.path.basename(folder) or folder)
+            self.source_folder_entry.setText(folder)
+            # If same folder is checked, update output too
+            if self.same_folder_check.isChecked():
+                self.output_folder_entry.setText(folder)
     
-    def accept_dialog(self):
-        if not self.input_folder:
-            QMessageBox.critical(self, "Error", "Please select a source folder")
+    def browse_output_folder(self):
+        """Browse for output folder"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Output Folder", 
+            self.output_folder_entry.text() or self.default_folder or ""
+        )
+        if folder:
+            self.output_folder_entry.setText(folder)
+    
+    def accept(self):
+        """Validate and accept the dialog"""
+        source_folder = self.source_folder_entry.text().strip()
+        output_folder = self.output_folder_entry.text().strip()
+        
+        if not source_folder:
+            QMessageBox.warning(self, "Missing Source", "Please select a source folder.")
             return
-            
-        if not self.output_folder:
-            QMessageBox.critical(self, "Error", "Please select an output folder")
+        
+        if not os.path.exists(source_folder):
+            QMessageBox.warning(self, "Invalid Source", "Source folder does not exist.")
             return
-            
-        # No need to check for transformations - if none selected, we'll just duplicate with "_dup"
-            
+        
+        if not output_folder:
+            QMessageBox.warning(self, "Missing Output", "Please select an output folder.")
+            return
+        
+        # Create output folder if it doesn't exist
+        if not os.path.exists(output_folder):
+            try:
+                os.makedirs(output_folder)
+            except Exception as e:
+                QMessageBox.critical(self, "Folder Creation Error", f"Could not create output folder: {str(e)}")
+                return
+        
+        # Get selected size
+        if self.size_512.isChecked():
+            size = 512
+        elif self.size_1024.isChecked():
+            size = 1024
+        else:
+            size = 2048
+        
+        # Store results
         self.result = {
-            'input_folder': self.input_folder,
-            'output_folder': self.output_folder,
-            'flip_horizontal': self.flip_horizontal_cb.isChecked(),
-            'rotate_90_left': self.rotate_90_left_cb.isChecked(),
-            'rotate_90_right': self.rotate_90_right_cb.isChecked(),
-            'rotate_180': self.rotate_180_cb.isChecked()
+            'source_folder': source_folder,
+            'output_folder': output_folder,
+            'size': size,
+            'keep_aspect': self.keep_aspect.isChecked()
         }
-        self.accept()
+        
+        super().accept()
+
+
+class ImageDuplicateDialog(QDialog):
+    """Dialog for configuring image duplication and transformation options"""
+    
+    def __init__(self, parent=None, default_folder=None):
+        super().__init__(parent)
+        self.default_folder = default_folder
+        self.result = {}
+        self.setup_ui()
+        
+    def setup_ui(self):
+        self.setWindowTitle("Create Duplicates")
+        self.setModal(True)
+        self.resize(500, 450)
+        
+        layout = QVBoxLayout(self)
+        
+        # Input folder selection
+        input_group = QGroupBox("Input Folder")
+        input_layout = QVBoxLayout(input_group)
+        
+        input_folder_layout = QHBoxLayout()
+        input_folder_layout.addWidget(QLabel("Input Folder:"))
+        self.input_folder_entry = QLineEdit()
+        if self.default_folder:
+            self.input_folder_entry.setText(self.default_folder)
+        self.input_browse_btn = QPushButton("Browse...")
+        self.input_browse_btn.clicked.connect(self.browse_input_folder)
+        
+        input_folder_layout.addWidget(self.input_folder_entry, 1)
+        input_folder_layout.addWidget(self.input_browse_btn)
+        input_layout.addLayout(input_folder_layout)
+        
+        # Output folder selection
+        output_group = QGroupBox("Output Folder")
+        output_layout = QVBoxLayout(output_group)
+        
+        # Same folder checkbox
+        self.same_folder_check = QCheckBox("Save to same folder as input")
+        self.same_folder_check.setChecked(True)  # Default to same folder
+        self.same_folder_check.toggled.connect(self.toggle_output_folder)
+        output_layout.addWidget(self.same_folder_check)
+        
+        # Output folder selection (initially disabled)
+        output_folder_layout = QHBoxLayout()
+        output_folder_layout.addWidget(QLabel("Output Folder:"))
+        self.output_folder_entry = QLineEdit()
+        if self.default_folder:
+            self.output_folder_entry.setText(self.default_folder)
+        self.output_folder_entry.setEnabled(False)
+        
+        self.output_browse_btn = QPushButton("Browse...")
+        self.output_browse_btn.clicked.connect(self.browse_output_folder)
+        self.output_browse_btn.setEnabled(False)
+        
+        output_folder_layout.addWidget(self.output_folder_entry, 1)
+        output_folder_layout.addWidget(self.output_browse_btn)
+        output_layout.addLayout(output_folder_layout)
+        
+        # Transformation options
+        transform_group = QGroupBox("Transformations")
+        transform_layout = QVBoxLayout(transform_group)
+        
+        info_label = QLabel("Select transformations to apply (if none selected, simple duplicates will be created):")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("QLabel { color: #666; font-size: 10px; margin-bottom: 5px; }")
+        transform_layout.addWidget(info_label)
+        
+        self.flip_horizontal = QCheckBox("Horizontal Flip")
+        self.rotate_90_left = QCheckBox("Rotate 90° Left")
+        self.rotate_90_right = QCheckBox("Rotate 90° Right")
+        self.rotate_180 = QCheckBox("Rotate 180°")
+        
+        transform_layout.addWidget(self.flip_horizontal)
+        transform_layout.addWidget(self.rotate_90_left)
+        transform_layout.addWidget(self.rotate_90_right)
+        transform_layout.addWidget(self.rotate_180)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.ok_btn = QPushButton("Create Duplicates")
+        self.cancel_btn = QPushButton("Cancel")
+        
+        self.ok_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(self.ok_btn)
+        button_layout.addWidget(self.cancel_btn)
+        
+        # Add all groups to main layout
+        layout.addWidget(input_group)
+        layout.addWidget(output_group)
+        layout.addWidget(transform_group)
+        layout.addLayout(button_layout)
+    
+    def toggle_output_folder(self, checked):
+        """Enable/disable output folder selection based on checkbox"""
+        self.output_folder_entry.setEnabled(not checked)
+        self.output_browse_btn.setEnabled(not checked)
+        
+        if checked and self.input_folder_entry.text():
+            # Set output to same as input
+            self.output_folder_entry.setText(self.input_folder_entry.text())
+    
+    def browse_input_folder(self):
+        """Browse for input folder"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Input Folder", 
+            self.input_folder_entry.text() or self.default_folder or ""
+        )
+        if folder:
+            self.input_folder_entry.setText(folder)
+            # If same folder is checked, update output too
+            if self.same_folder_check.isChecked():
+                self.output_folder_entry.setText(folder)
+    
+    def browse_output_folder(self):
+        """Browse for output folder"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Output Folder", 
+            self.output_folder_entry.text() or self.default_folder or ""
+        )
+        if folder:
+            self.output_folder_entry.setText(folder)
+    
+    def accept(self):
+        """Validate and accept the dialog"""
+        input_folder = self.input_folder_entry.text().strip()
+        output_folder = self.output_folder_entry.text().strip()
+        
+        if not input_folder:
+            QMessageBox.warning(self, "Missing Input", "Please select an input folder.")
+            return
+        
+        if not os.path.exists(input_folder):
+            QMessageBox.warning(self, "Invalid Input", "Input folder does not exist.")
+            return
+        
+        if not output_folder:
+            QMessageBox.warning(self, "Missing Output", "Please select an output folder.")
+            return
+        
+        # Create output folder if it doesn't exist (and it's different from input)
+        if input_folder != output_folder and not os.path.exists(output_folder):
+            try:
+                os.makedirs(output_folder)
+            except Exception as e:
+                QMessageBox.critical(self, "Folder Creation Error", f"Could not create output folder: {str(e)}")
+                return
+        
+        # Store results
+        self.result = {
+            'input_folder': input_folder,
+            'output_folder': output_folder,
+            'flip_horizontal': self.flip_horizontal.isChecked(),
+            'rotate_90_left': self.rotate_90_left.isChecked(),
+            'rotate_90_right': self.rotate_90_right.isChecked(),
+            'rotate_180': self.rotate_180.isChecked()
+        }
+        
+        super().accept()

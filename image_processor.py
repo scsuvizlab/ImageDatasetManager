@@ -26,8 +26,8 @@ class ImageProcessor:
                 and f.lower().endswith(image_extensions)]
     
     @staticmethod
-    def validate_image(img_path):
-        """Validate that an image is not corrupt and meets minimum size requirements"""
+    def validate_image(img_path, allow_small_images=False):
+        """Validate that an image is not corrupt and optionally check size requirements"""
         try:
             with Image.open(img_path) as img:
                 # Check if image can be loaded and verify
@@ -36,16 +36,21 @@ class ImageProcessor:
             # Need to reopen after verify()
             with Image.open(img_path) as img:
                 width, height = img.size
-                # Check minimum size requirement (512x512)
-                if width < 512 or height < 512:
+                
+                # Check minimum size requirement (512x512) only if not allowing small images
+                if not allow_small_images and (width < 512 or height < 512):
                     return False, f"Image too small: {width}x{height} (minimum 512x512)"
+                
+                # Check for extremely small images that can't be reasonably upscaled
+                if width < 32 or height < 32:
+                    return False, f"Image too small to process: {width}x{height} (minimum 32x32)"
                 
             return True, "Valid"
             
         except Exception as e:
             return False, f"Invalid or corrupt image: {str(e)}"
     
-    def fix_images(self, source_folder, target_size, keep_aspect, output_folder, status_callback=None):
+    def fix_images(self, source_folder, target_size, keep_aspect, output_folder, resize_small_images=False, images_to_process=None, status_callback=None):
         """
         Process images to fix dimensions and format
         
@@ -54,22 +59,39 @@ class ImageProcessor:
             target_size: Target size for longest dimension
             keep_aspect: Whether to maintain aspect ratio
             output_folder: Output directory
+            resize_small_images: Whether to upscale small images instead of skipping them
+            images_to_process: List of image filenames to process (if None, processes all)
             status_callback: Function to call with status updates
         
         Returns:
             dict: Results summary
         """
-        image_files = self.get_image_files(source_folder)
+        if images_to_process is None:
+            # Process all images in folder
+            image_files = self.get_image_files(source_folder)
+        else:
+            # Process only specified images
+            image_files = images_to_process
         
         if not image_files:
-            return {'error': "No images found in the selected folder"}
+            return {'error': "No images found in the specified scope"}
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_folder):
+            try:
+                os.makedirs(output_folder)
+            except Exception as e:
+                return {'error': f"Could not create output folder: {str(e)}"}
         
         # Create progress dialog
-        progress = QProgressDialog("Processing images...", "Cancel", 0, len(image_files), self.parent)
-        progress.setWindowTitle("Fix Images")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
+        if self.parent:
+            progress = QProgressDialog("Processing images...", "Cancel", 0, len(image_files), self.parent)
+            progress.setWindowTitle("Fix Images")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+        else:
+            progress = None
         
         # Track progress
         processed_images = 0
@@ -79,19 +101,21 @@ class ImageProcessor:
         # Process each image
         for i, img_file in enumerate(image_files):
             # Update progress
-            progress.setValue(i)
-            if progress.wasCanceled():
-                break
-                
+            if progress:
+                progress.setValue(i)
+                if progress.wasCanceled():
+                    break
+                    
             img_path = os.path.join(source_folder, img_file)
             
             # Validate image first
-            is_valid, validation_message = self.validate_image(img_path)
+            is_valid, validation_message = self.validate_image(img_path, allow_small_images=resize_small_images)
             if not is_valid:
                 invalid_images.append((img_file, validation_message))
                 if status_callback:
                     status_callback(f"Skipping {img_file}: {validation_message}")
-                QApplication.processEvents()
+                if progress:
+                    QApplication.processEvents()
                 continue
             
             try:
@@ -99,7 +123,15 @@ class ImageProcessor:
                 img = Image.open(img_path)
                 width, height = img.size
                 
-                # Check if already correct size and format
+                # Check if image needs upscaling first (only if resize_small_images is enabled)
+                needs_upscaling = resize_small_images and (width < 512 or height < 512)
+                
+                if needs_upscaling:
+                    # Upscale small image to meet minimum size requirements
+                    img = self._upscale_small_image(img, target_size)
+                    width, height = img.size
+                
+                # Check if already correct size and format after potential upscaling
                 is_correct_size = False
                 if keep_aspect:
                     # For aspect ratio mode, just check if longest dimension matches
@@ -108,39 +140,50 @@ class ImageProcessor:
                     # For square mode, check if already square and correct size
                     is_correct_size = (width == height == target_size)
                 
-                if is_correct_size:
-                    # Already good, just copy
-                    fixed_img_path = os.path.join(output_folder, img_file)
-                    shutil.copy2(img_path, fixed_img_path)
+                if is_correct_size and not needs_upscaling:
+                    # Already good, just copy if different folders
+                    if source_folder != output_folder:
+                        fixed_img_path = os.path.join(output_folder, img_file)
+                        shutil.copy2(img_path, fixed_img_path)
                     skipped_images += 1
                 else:
-                    # Need to process
-                    processed_img = self._resize_image(img, target_size, keep_aspect)
+                    # Need to process (either resize or was upscaled)
+                    if not needs_upscaling:
+                        # Normal resize
+                        processed_img = self._resize_image(img, target_size, keep_aspect)
+                    else:
+                        # Already upscaled, may need further processing
+                        if not is_correct_size:
+                            processed_img = self._resize_image(img, target_size, keep_aspect)
+                        else:
+                            processed_img = img
                     
                     # Save the processed image
                     fixed_img_path = os.path.join(output_folder, img_file)
                     processed_img.save(fixed_img_path, quality=95)
+                    processed_images += 1
                 
                 # Copy associated text file if it exists
                 self._copy_text_file(source_folder, output_folder, img_file)
                 
-                processed_images += 1
-                
                 # Update status
                 if status_callback:
-                    status_callback(f"Processing images: {processed_images}/{len(image_files)}")
-                QApplication.processEvents()
+                    status_callback(f"Processing images: {processed_images + skipped_images}/{len(image_files)}")
+                if progress:
+                    QApplication.processEvents()
                 
             except Exception as e:
                 print(f"Error processing {img_file}: {str(e)}")
                 invalid_images.append((img_file, str(e)))
         
         # Copy JSON files
-        self._copy_json_files(source_folder, output_folder)
+        if source_folder != output_folder:
+            self._copy_json_files(source_folder, output_folder)
         
         # Close progress dialog properly
-        progress.close()
-        progress.deleteLater()
+        if progress:
+            progress.close()
+            progress.deleteLater()
         
         return {
             'processed': processed_images,
@@ -158,9 +201,9 @@ class ImageProcessor:
             image_files = images_to_process
         
         if not image_files:
-            return {'error': "No images found in the source folder"}
+            return {'error': "No images found in the specified scope"}
 
-        # Build transform list RIGHT HERE
+        # Build transform list
         transform_ops = []
         if transformations.get('flip_horizontal'):
             transform_ops.append(('flip', 'Horizontal Flip'))
@@ -175,25 +218,34 @@ class ImageProcessor:
         if not transform_ops:
             transform_ops.append(('duplicate', 'Simple Duplicate'))
         
-        print(f"DEBUG: Final transform_ops = {transform_ops}")
+        # Create output directory if it doesn't exist and different from input
+        if input_folder != output_folder and not os.path.exists(output_folder):
+            try:
+                os.makedirs(output_folder)
+            except Exception as e:
+                return {'error': f"Could not create output folder: {str(e)}"}
 
         # Create progress dialog
-        progress = QProgressDialog("Creating duplicates...", "Cancel", 0, len(image_files), self.parent)
-        progress.setWindowTitle("Create Duplicates")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
+        if self.parent:
+            progress = QProgressDialog("Creating duplicates...", "Cancel", 0, len(image_files), self.parent)
+            progress.setWindowTitle("Create Duplicates")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+        else:
+            progress = None
         
         created_files = 0
         error_files = []
         
         # Process each image
         for i, img_file in enumerate(image_files):
-            if progress.wasCanceled():
-                break
-            progress.setValue(i)
-            progress.setLabelText(f"Processing {img_file}...")
-            QApplication.processEvents()
+            if progress:
+                if progress.wasCanceled():
+                    break
+                progress.setValue(i)
+                progress.setLabelText(f"Processing {img_file}...")
+                QApplication.processEvents()
             
             img_path = os.path.join(input_folder, img_file)
             base_name = os.path.splitext(img_file)[0]
@@ -211,7 +263,6 @@ class ImageProcessor:
                 
                 # Create transformed versions
                 for transform_key, transform_name in transform_ops:
-                    print(f"DEBUG: Processing {transform_key} for {img_file}")
                     try:
                         transformed_img, suffix = self._apply_transformation(original_img, transform_key)
                         new_img_name = f"{base_name}{suffix}{img_ext}"
@@ -219,26 +270,26 @@ class ImageProcessor:
                         
                         transformed_img.save(new_img_path, quality=95)
                         created_files += 1
-                        print(f"DEBUG: Created {new_img_path}")
                         
                         self._copy_transformed_text_file(input_folder, output_folder, img_file, suffix)
                         
                     except Exception as e:
                         error_msg = f"Error creating {transform_name} of {img_file}: {str(e)}"
                         error_files.append(error_msg)
-                        print(f"DEBUG: Error: {error_msg}")
+                        print(f"Error: {error_msg}")
                     
             except Exception as e:
                 error_msg = f"Error processing {img_file}: {str(e)}"
                 error_files.append(error_msg)
-                print(f"DEBUG: Error: {error_msg}")
+                print(f"Error: {error_msg}")
         
         # Update JSON file with all variants
         self._create_augmented_json(input_folder, output_folder, transform_ops)
         
         # Close progress dialog properly
-        progress.close()
-        progress.deleteLater()
+        if progress:
+            progress.close()
+            progress.deleteLater()
         
         return {
             'created_files': created_files,
@@ -284,11 +335,14 @@ class ImageProcessor:
             return {'error': f"Naming conflicts detected. These files already exist: {', '.join(conflicts[:5])}{'...' if len(conflicts) > 5 else ''}"}
         
         # Create progress dialog
-        progress = QProgressDialog("Renaming images...", "Cancel", 0, len(image_files), self.parent)
-        progress.setWindowTitle("Mass Rename")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
+        if self.parent:
+            progress = QProgressDialog("Renaming images...", "Cancel", 0, len(image_files), self.parent)
+            progress.setWindowTitle("Mass Rename")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+        else:
+            progress = None
         
         renamed_images = 0
         renamed_descriptions = 0
@@ -297,12 +351,13 @@ class ImageProcessor:
         
         # Rename files
         for i, old_filename in enumerate(image_files):
-            if progress.wasCanceled():
-                break
-                
-            progress.setValue(i)
-            progress.setLabelText(f"Renaming {old_filename}...")
-            QApplication.processEvents()
+            if progress:
+                if progress.wasCanceled():
+                    break
+                    
+                progress.setValue(i)
+                progress.setLabelText(f"Renaming {old_filename}...")
+                QApplication.processEvents()
             
             try:
                 # Generate new filename
@@ -339,8 +394,9 @@ class ImageProcessor:
         self._update_json_with_new_names(folder_path, old_to_new_mapping)
         
         # Close progress dialog properly
-        progress.close()
-        progress.deleteLater()
+        if progress:
+            progress.close()
+            progress.deleteLater()
         
         return {
             'renamed_images': renamed_images,
@@ -348,6 +404,27 @@ class ImageProcessor:
             'errors': errors,
             'total_images': len(image_files)
         }
+    
+    def _upscale_small_image(self, img, target_size):
+        """Upscale a small image to meet minimum size requirements"""
+        # Convert to RGB mode if needed
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        width, height = img.size
+        
+        # Calculate scale factor to make the image at least 512x512
+        min_dimension = min(width, height)
+        scale_factor = max(512 / min_dimension, 1.0)  # Ensure we don't downscale
+        
+        # Calculate new dimensions
+        new_width = int(width * scale_factor)
+        new_height = int(height * scale_factor)
+        
+        # Upscale using high-quality resampling
+        upscaled_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        return upscaled_img
     
     def _resize_image(self, img, target_size, keep_aspect):
         """Resize image according to specified parameters"""
@@ -449,7 +526,7 @@ class ImageProcessor:
         try:
             # Load original JSON
             json_path = os.path.join(input_folder, json_files[0])
-            with open(json_path, 'r') as f:
+            with open(json_path, 'r', encoding='utf-8') as f:
                 original_json = json.load(f)
             
             # Create new JSON with all variants
@@ -496,8 +573,8 @@ class ImageProcessor:
                 base_json_name = os.path.splitext(json_files[0])[0]
                 new_json_path = os.path.join(output_folder, f"{base_json_name}_augmented.json")
                 
-            with open(new_json_path, 'w') as f:
-                json.dump(new_json_data, f, indent=2)
+            with open(new_json_path, 'w', encoding='utf-8') as f:
+                json.dump(new_json_data, f, indent=2, ensure_ascii=False)
                 
         except Exception as e:
             print(f"Error processing JSON file: {str(e)}")
@@ -529,7 +606,7 @@ class ImageProcessor:
                 json_path = os.path.join(folder_path, json_filename)
                 
                 # Load JSON
-                with open(json_path, 'r') as f:
+                with open(json_path, 'r', encoding='utf-8') as f:
                     json_data = json.load(f)
                 
                 # Update filenames in JSON
@@ -544,8 +621,8 @@ class ImageProcessor:
                         updated_data.append(item)
                 
                 # Save updated JSON
-                with open(json_path, 'w') as f:
-                    json.dump(updated_data, f, indent=2)
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(updated_data, f, indent=2, ensure_ascii=False)
                     
             except Exception as e:
                 print(f"Error updating JSON file {json_filename}: {str(e)}")
