@@ -11,10 +11,10 @@ import random
 from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QTableWidgetItem, QMenu, QDialog, 
     QProgressDialog, QApplication, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QTextEdit, QScrollArea
+    QPushButton, QTextEdit, QScrollArea, QInputDialog, QWidget
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtGui import QPixmap, QImage, QBrush, QColor, QFont
 
 from PIL import Image
 from dialogs import ImageFixDialog, ImageDuplicateDialog
@@ -65,28 +65,30 @@ class EventHandlers:
             QMessageBox.critical(self.app, "Load Error", message)
     
     def populate_table(self, images_data):
-        """Populate the table with image data using tag display widgets"""
+        """Populate the table with image data"""
         table = self.app.gallery_tab.table
         table.setRowCount(0)  # Clear existing data
         
-        for i, img_data in enumerate(images_data):
-            row_position = table.rowCount()
+        for row_position, img_data in enumerate(images_data):
             table.insertRow(row_position)
             
             # Filename column
-            table.setItem(row_position, 0, QTableWidgetItem(img_data['filename']))
+            display_name = f"📷 {img_data['filename']}"
+            table.setItem(row_position, 0, QTableWidgetItem(display_name))
             
-            # Tags column - try to create custom widget, fallback to text
+            # Tags column
             try:
                 tags = self.app.tag_manager.get_tags_for_image(img_data['filename'])
                 tag_widget = self._create_tag_display_widget(img_data['filename'], tags)
                 table.setCellWidget(row_position, 1, tag_widget)
             except Exception as e:
                 print(f"Error creating tag widget for {img_data['filename']}: {e}")
-                # Fallback to simple text display
                 tags = self.app.tag_manager.get_tags_for_image(img_data['filename'])
                 tag_text = ", ".join(tags) if tags else ""
                 table.setItem(row_position, 1, QTableWidgetItem(tag_text))
+            
+            # Set row data for selection handling
+            table.item(row_position, 0).setData(Qt.ItemDataRole.UserRole, ('image', img_data['filename']))
             
             # Update row index in data
             img_data['row_index'] = row_position
@@ -94,7 +96,7 @@ class EventHandlers:
         # Update utils tab scope info
         self.app.utils_tab.update_scope_info(0, len(images_data))
         
-        # Update tag input widget with all available tags and set tag manager reference
+        # Update tag input widget
         try:
             if hasattr(self.app.gallery_tab, 'tag_input_widget') and hasattr(self.app.gallery_tab.tag_input_widget, 'set_available_tags'):
                 self.app.gallery_tab.tag_input_widget.set_tag_manager(self.app.tag_manager)
@@ -125,22 +127,27 @@ class EventHandlers:
         """Handle table selection change"""
         selected_rows = self.app.gallery_tab.table.selectionModel().selectedRows()
         
-        # Update utils tab scope info
-        total_images = len(self.app.data_manager.images_data)
-        selected_count = len(selected_rows)
-        self.app.utils_tab.update_scope_info(selected_count, total_images)
+        # Collect selected images
+        selected_images = []
         
-        # Update keyword label based on selection (with error handling)
-        try:
-            if hasattr(self.app.gallery_tab, 'keyword_label'):
-                if selected_count == 0:
-                    self.app.gallery_tab.keyword_label.setText("Add Tag to All")
-                    self.app.gallery_tab.keyword_entry.setPlaceholderText("Add tag to all images...")
-                else:
-                    self.app.gallery_tab.keyword_label.setText("Add Tag to Selected")
-                    self.app.gallery_tab.keyword_entry.setPlaceholderText("Add tag to selected images...")
-        except Exception as e:
-            print(f"Warning: Could not update keyword label: {e}")
+        for row_model in selected_rows:
+            row = row_model.row()
+            item = self.app.gallery_tab.table.item(row, 0)
+            
+            if item and item.data(Qt.ItemDataRole.UserRole):
+                item_type, data = item.data(Qt.ItemDataRole.UserRole)
+                
+                if item_type == 'image':
+                    # Individual image selected
+                    img_data = next((img for img in self.app.data_manager.images_data if img['filename'] == data), None)
+                    if img_data:
+                        selected_images.append(img_data)
+        
+        selected_image_count = len(selected_images)
+        total_images = len(self.app.data_manager.images_data)
+        
+        # Update utils tab scope info
+        self.app.utils_tab.update_scope_info(selected_image_count, total_images)
         
         if not selected_rows:
             # No selection
@@ -150,19 +157,18 @@ class EventHandlers:
             return
         
         # Update status with selection count
-        if len(selected_rows) == 1:
-            # Single selection - show the image
-            row = selected_rows[0].row()
-            index, img_data = self.app.data_manager.find_image_by_row_index(row)
-            if index >= 0:
-                self.app.current_image_index = index
-                self.show_selected_image()
-                self.app.set_status(f"Selected: {img_data['filename']}")
+        if selected_image_count == 1:
+            # Single image selection - show the image
+            img_data = selected_images[0]
+            # Find the index in original data
+            self.app.current_image_index = next((i for i, img in enumerate(self.app.data_manager.images_data) if img['filename'] == img_data['filename']), -1)
+            self.show_selected_image()
+            self.app.set_status(f"Selected: {img_data['filename']}")
         else:
             # Multiple selection - show info but no specific image
             self.app.current_image_index = -1
-            self._show_multiple_selection_display(len(selected_rows))
-            self.app.set_status(f"{len(selected_rows)} images selected")
+            self._show_multiple_selection_display(selected_image_count)
+            self.app.set_status(f"{selected_image_count} images selected")
     
     def _show_multiple_selection_display(self, count):
         """Display info when multiple images are selected"""
@@ -184,9 +190,16 @@ class EventHandlers:
         
         for row_model in selected_rows:
             row = row_model.row()
-            index, img_data = self.app.data_manager.find_image_by_row_index(row)
-            if index >= 0:
-                selected_images.append(img_data)
+            item = self.app.gallery_tab.table.item(row, 0)
+            
+            if item and item.data(Qt.ItemDataRole.UserRole):
+                item_type, data = item.data(Qt.ItemDataRole.UserRole)
+                
+                if item_type == 'image':
+                    # Individual image selected
+                    img_data = next((img for img in self.app.data_manager.images_data if img['filename'] == data), None)
+                    if img_data:
+                        selected_images.append(img_data)
         
         return selected_images
     
@@ -290,61 +303,6 @@ class EventHandlers:
         except Exception as e:
             self.app.set_status(f"Auto-save error: {str(e)}")
     
-    def append_keywords(self):
-        """Add keyword as tag to selected images or all images"""
-        keyword = self.app.gallery_tab.keyword_entry.text().strip()
-        if not keyword:
-            return
-        
-        # Parse keywords (in case multiple are entered)
-        tags = self.app.tag_manager.parse_tags_from_text(keyword)
-        if not tags:
-            return
-        
-        # Determine which images to apply to based on selection
-        selected_images = self.get_selected_images()
-        
-        if selected_images:
-            # Apply to selected images only
-            for img_data in selected_images:
-                self.app.tag_manager.add_tags_to_image(img_data['filename'], tags)
-                self.refresh_image_row(img_data['filename'])
-            
-            status_msg = f"Added {len(tags)} tag(s) to {len(selected_images)} selected images and auto-saved"
-        else:
-            # Apply to all images
-            updated_count = 0
-            for img_data in self.app.data_manager.images_data:
-                self.app.tag_manager.add_tags_to_image(img_data['filename'], tags)
-                self.refresh_image_row(img_data['filename'])
-                updated_count += 1
-            
-            status_msg = f"Added {len(tags)} tag(s) to all {updated_count} images and auto-saved"
-        
-        # Update tag input widget with new available tags
-        try:
-            if hasattr(self.app.gallery_tab, 'tag_input_widget') and hasattr(self.app.gallery_tab.tag_input_widget, 'set_available_tags'):
-                self.app.gallery_tab.tag_input_widget.set_available_tags(self.app.tag_manager.get_all_tags())
-        except Exception as e:
-            print(f"Warning: Could not update tag input widget: {e}")
-        
-        # Update current image tags display if this is the selected image
-        if self.app.current_image_index >= 0:
-            current_img_data = self.app.data_manager.get_image_data(self.app.current_image_index)
-            if current_img_data:
-                tags_for_current = self.app.tag_manager.get_tags_for_image(current_img_data['filename'])
-                try:
-                    if hasattr(self.app.gallery_tab, 'current_image_tags_widget'):
-                        self.app.gallery_tab.current_image_tags_widget.set_image_tags(current_img_data['filename'], tags_for_current)
-                except Exception as e:
-                    print(f"Error updating current image tags display: {e}")
-        
-        # Auto-save after keyword addition
-        self._auto_save_tags()
-        
-        self.app.gallery_tab.keyword_entry.clear()
-        self.app.set_status(status_msg)
-    
     def on_tag_removed_from_image(self, filename: str, tag: str):
         """Handle removal of a tag from a specific image"""
         self.app.tag_manager.remove_tag_from_image(filename, tag)
@@ -401,65 +359,6 @@ class EventHandlers:
         if keyword_tag == tag:
             self.app.set_status(f"Set '{tag}' as keyword tag (will always appear first)")
         else:
-            self.app.set_status(f"Removed '{tag}' as keyword tag)")
-    
-    def force_refresh_all_tags(self):
-        """Force refresh all tag displays to update styling"""
-        # Refresh all table rows
-        for img_data in self.app.data_manager.images_data:
-            self.refresh_image_row(img_data['filename'])
-        
-        # Refresh tag input widget
-        try:
-            if hasattr(self.app.gallery_tab, 'tag_input_widget'):
-                self.app.gallery_tab.tag_input_widget.refresh_tag_display()
-        except Exception as e:
-            print(f"Warning: Could not refresh tag input widget: {e}")
-        
-        # Refresh current image tags display
-        if self.app.current_image_index >= 0:
-            current_img_data = self.app.data_manager.get_image_data(self.app.current_image_index)
-            if current_img_data:
-                current_tags = self.app.tag_manager.get_tags_for_image(current_img_data['filename'])
-                try:
-                    if hasattr(self.app.gallery_tab, 'current_image_tags_widget'):
-                        self.app.gallery_tab.current_image_tags_widget.set_image_tags(current_img_data['filename'], current_tags)
-                except Exception as e:
-                    print(f"Error updating current image tags display: {e}")
-        
-        self.app.set_status("Refreshed all tag displays")
-        """Handle keyword tag toggle"""
-        self.app.tag_manager.toggle_keyword_tag(tag)
-        
-        # Refresh all table rows to update keyword display
-        for img_data in self.app.data_manager.images_data:
-            self.refresh_image_row(img_data['filename'])
-        
-        # Update current image tags display if applicable
-        if self.app.current_image_index >= 0:
-            current_img_data = self.app.data_manager.get_image_data(self.app.current_image_index)
-            if current_img_data:
-                current_tags = self.app.tag_manager.get_tags_for_image(current_img_data['filename'])
-                try:
-                    if hasattr(self.app.gallery_tab, 'current_image_tags_widget'):
-                        self.app.gallery_tab.current_image_tags_widget.set_image_tags(current_img_data['filename'], current_tags)
-                except Exception as e:
-                    print(f"Error updating current image tags display: {e}")
-        
-        # Update tag input widget display
-        try:
-            if hasattr(self.app.gallery_tab, 'tag_input_widget'):
-                self.app.gallery_tab.tag_input_widget.refresh_tag_display()
-        except Exception as e:
-            print(f"Warning: Could not refresh tag input widget: {e}")
-        
-        # Auto-save
-        self._auto_save_tags()
-        
-        keyword_tag = self.app.tag_manager.get_keyword_tag()
-        if keyword_tag == tag:
-            self.app.set_status(f"Set '{tag}' as keyword tag (will always appear first)")
-        else:
             self.app.set_status(f"Removed '{tag}' as keyword tag")
     
     def refresh_image_row(self, filename: str):
@@ -469,20 +368,22 @@ class EventHandlers:
         # Find the row for this image
         for row in range(table.rowCount()):
             item = table.item(row, 0)
-            if item and item.text() == filename:
-                # Update the tags widget
-                tags = self.app.tag_manager.get_tags_for_image(filename)
-                try:
-                    tag_widget = self._create_tag_display_widget(filename, tags)
-                    table.setCellWidget(row, 1, tag_widget)
-                except Exception as e:
-                    print(f"Error refreshing tag widget for {filename}: {e}")
-                    # Fallback to text display
-                    tag_text = ", ".join(tags) if tags else ""
-                    # Remove existing widget first
-                    table.removeCellWidget(row, 1)
-                    table.setItem(row, 1, QTableWidgetItem(tag_text))
-                break
+            if item and item.data(Qt.ItemDataRole.UserRole):
+                item_type, data = item.data(Qt.ItemDataRole.UserRole)
+                if item_type == 'image' and data == filename:
+                    # Update the tags widget
+                    tags = self.app.tag_manager.get_tags_for_image(filename)
+                    try:
+                        tag_widget = self._create_tag_display_widget(filename, tags)
+                        table.setCellWidget(row, 1, tag_widget)
+                    except Exception as e:
+                        print(f"Error refreshing tag widget for {filename}: {e}")
+                        # Fallback to text display
+                        tag_text = ", ".join(tags) if tags else ""
+                        # Remove existing widget first
+                        table.removeCellWidget(row, 1)
+                        table.setItem(row, 1, QTableWidgetItem(tag_text))
+                    break
     
     def on_tags_changed(self, available_tags: list):
         """Handle changes to available tags"""
@@ -558,23 +459,27 @@ class EventHandlers:
         self.app.set_status(f"Applied {len(tags)} tags to all {len(self.app.data_manager.images_data)} images")
     
     def show_context_menu(self, position):
-        """Show context menu for table items with delete options"""
+        """Show context menu for table items"""
+        from PyQt6.QtWidgets import QMenu
         context_menu = QMenu()
         
-        # Add two delete options
-        delete_from_list_action = context_menu.addAction("🗑️ Remove from List Only")
-        delete_from_disk_action = context_menu.addAction("🗑️ Delete from Disk (Image + Description)")
+        # Check what's selected to determine available actions
+        selected_rows = self.app.gallery_tab.table.selectionModel().selectedRows()
+        selected_images = self.get_selected_images()
         
-        # Add separator for clarity
-        context_menu.addSeparator()
+        # Only show delete options for single image selection
+        if len(selected_images) == 1:
+            delete_from_list_action = context_menu.addAction("🗑️ Remove from List Only")
+            delete_from_disk_action = context_menu.addAction("🗑️ Delete from Disk (Image + Description)")
+            
+            delete_from_list_action.triggered.connect(lambda: self.delete_selected_row(from_disk=False))
+            delete_from_disk_action.triggered.connect(lambda: self.delete_selected_row(from_disk=True))
+            
+            context_menu.addSeparator()
+        
         context_menu.addAction("Cancel")
         
-        action = context_menu.exec(self.app.gallery_tab.table.mapToGlobal(position))
-        
-        if action == delete_from_list_action:
-            self.delete_selected_row(from_disk=False)
-        elif action == delete_from_disk_action:
-            self.delete_selected_row(from_disk=True)
+        context_menu.exec(self.app.gallery_tab.table.mapToGlobal(position))
     
     def delete_selected_row(self, from_disk=False):
         """Delete the selected image from the list and optionally from disk"""
@@ -582,8 +487,24 @@ class EventHandlers:
         if current_row < 0:
             return
         
-        # Find the corresponding image data
-        index, img_data = self.app.data_manager.find_image_by_row_index(current_row)
+        # Get the item data
+        item = self.app.gallery_tab.table.item(current_row, 0)
+        if not item or not item.data(Qt.ItemDataRole.UserRole):
+            return
+        
+        item_type, data = item.data(Qt.ItemDataRole.UserRole)
+        
+        if item_type != 'image':
+            return
+        
+        # Handle image deletion
+        filename = data
+        img_data = next((img for img in self.app.data_manager.images_data if img['filename'] == filename), None)
+        if not img_data:
+            return
+        
+        # Find the index in the original data
+        index = next((i for i, img in enumerate(self.app.data_manager.images_data) if img['filename'] == filename), -1)
         if index < 0:
             return
         
@@ -641,7 +562,7 @@ class EventHandlers:
                 
                 # Select next item if available
                 if self.app.data_manager.images_data:
-                    next_row = min(current_row, len(self.app.data_manager.images_data) - 1)
+                    next_row = min(current_row, self.app.gallery_tab.table.rowCount() - 1)
                     if next_row >= 0:
                         self.app.gallery_tab.table.selectRow(next_row)
                     else:
@@ -700,14 +621,19 @@ class EventHandlers:
             
             # Try to restore selection to the same image
             if current_filename:
-                for i, img_data in enumerate(images_data):
-                    if img_data['filename'] == current_filename:
-                        self.app.gallery_tab.table.selectRow(i)
-                        break
+                # Find the row with this filename and select it
+                table = self.app.gallery_tab.table
+                for row in range(table.rowCount()):
+                    item = table.item(row, 0)
+                    if item and item.data(Qt.ItemDataRole.UserRole):
+                        item_type, data = item.data(Qt.ItemDataRole.UserRole)
+                        if item_type == 'image' and data == current_filename:
+                            table.selectRow(row)
+                            break
                 else:
                     # Original image not found, select first item
                     if images_data:
-                        self.app.gallery_tab.table.selectRow(0)
+                        table.selectRow(0)
             else:
                 # No previous selection, select first item
                 if images_data:
@@ -716,6 +642,8 @@ class EventHandlers:
             self.app.set_status(f"Gallery refreshed • {message}")
         else:
             QMessageBox.warning(self.app, "Refresh Error", f"Could not refresh gallery: {message}")
+    
+    # Utility methods
     
     def fix_images(self):
         """Process images with user-selected options"""
@@ -849,6 +777,9 @@ class EventHandlers:
             QMessageBox.critical(self.app, "No Prefix", "Please enter a prefix for the new filenames.")
             return
         
+        # Get scramble order option
+        scramble_order = self.app.utils_tab.scramble_order_checkbox.isChecked()
+        
         # Determine which images to process based on radio button selection
         if self.app.utils_tab.rename_selected_radio.isChecked():
             # Process only selected images
@@ -865,7 +796,12 @@ class EventHandlers:
         
         # Confirm with user
         confirm_msg = f"This will rename {scope_text} to:\n"
-        confirm_msg += f"{prefix}001, {prefix}002, {prefix}003, etc.\n\n"
+        if scramble_order:
+            confirm_msg += f"{prefix}_a001, {prefix}_m002, {prefix}_c003, etc. (random order)\n\n"
+            confirm_msg += "Random letters will scramble the training order.\n"
+        else:
+            confirm_msg += f"{prefix}_001, {prefix}_002, {prefix}_003, etc.\n\n"
+        
         confirm_msg += "Description files will also be renamed to match.\n"
         confirm_msg += "This operation cannot be undone. Continue?"
         
@@ -883,6 +819,7 @@ class EventHandlers:
             folder_path=self.app.data_manager.current_folder,
             prefix=prefix,
             images_to_process=images_to_process,
+            scramble_order=scramble_order,
             status_callback=self.app.set_status
         )
         
@@ -892,6 +829,10 @@ class EventHandlers:
         
         # Show completion message
         message = f"Successfully renamed {result['renamed_images']} images and {result['renamed_descriptions']} description files.\n"
+        
+        if result.get('scrambled', False):
+            message += "Applied order scrambling with random letters.\n"
+        
         if result['errors']:
             message += f"\nEncountered {len(result['errors'])} errors:\n"
             for error in result['errors'][:3]:
@@ -900,7 +841,11 @@ class EventHandlers:
                 message += f"  ... and {len(result['errors']) - 3} more\n"
         
         QMessageBox.information(self.app, "Rename Complete", message)
-        self.app.set_status(f"Renamed {result['renamed_images']} images with prefix '{prefix}'")
+        
+        if result.get('scrambled', False):
+            self.app.set_status(f"Renamed {result['renamed_images']} images with prefix '{prefix}' and order scrambling")
+        else:
+            self.app.set_status(f"Renamed {result['renamed_images']} images with prefix '{prefix}'")
         
         # Clear the prefix field for next use
         self.app.utils_tab.prefix_entry.clear()

@@ -5,7 +5,7 @@ Image Gallery with Descriptions - Main Application
 A tool for organizing datasets for image generating AI models.
 Supports managing descriptions and dataset augmentation utilities.
 
-Refactored version with modular architecture.
+Clean version focused on core functionality.
 """
 
 # Force X11 instead of Wayland to avoid display issues
@@ -37,7 +37,7 @@ class ImageGalleryApp(QMainWindow):
         # Initialize core components
         self.data_manager = DataManager()
         self.image_processor = ImageProcessor(self)
-        self.tag_manager = TagManager()  # For future tag system
+        self.tag_manager = TagManager()
         self.current_image_index = -1
         
         # Initialize event handlers (after other components)
@@ -101,6 +101,12 @@ class ImageGalleryApp(QMainWindow):
         reset_font_action.setShortcut("Ctrl+0")
         reset_font_action.triggered.connect(self.reset_font_size)
         self.addAction(reset_font_action)
+        
+        # Force refresh shortcut
+        refresh_action = QAction(self)
+        refresh_action.setShortcut("F5")
+        refresh_action.triggered.connect(self.event_handlers.refresh_gallery)
+        self.addAction(refresh_action)
     
     def update_fonts(self):
         """Update all fonts in the application"""
@@ -139,6 +145,25 @@ def main():
     app = QApplication(sys.argv)
     window = ImageGalleryApp()
     window.show()
+    
+    # Print helpful info on startup
+    print("\n" + "="*50)
+    print("IMAGE GALLERY - CLEAN VERSION")
+    print("="*50)
+    print("Keyboard shortcuts:")
+    print("  F5      - Force refresh gallery")
+    print("  Ctrl++  - Increase font size")
+    print("  Ctrl+-  - Decrease font size")
+    print("  Ctrl+0  - Reset font size")
+    print()
+    print("Features available:")
+    print("  • Tag system with keyword support")
+    print("  • Image processing utilities")
+    print("  • Multi-selection operations")
+    print("  • Tag scrambling and management")
+    print("  • Order scrambling for training datasets")
+    print("="*50 + "\n")
+    
     sys.exit(app.exec())
 
 

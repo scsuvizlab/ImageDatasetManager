@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QPushButton, QLabel, QLineEdit, QHBoxLayout, QVBoxLayout, 
     QTableWidget, QTableWidgetItem, QSplitter, QTextEdit, QHeaderView,
     QTabWidget, QGroupBox, QFrame, QRadioButton, QButtonGroup, QScrollArea,
-    QApplication, QSizePolicy
+    QApplication, QSizePolicy, QCheckBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QPalette, QFont, QPainter, QBrush, QPen, QColor
@@ -599,23 +599,11 @@ class GalleryTab(QWidget):
         
         # Left side controls
         self.select_folder_btn = QPushButton("Select Folder")
-        
-        # Keyword entry with dynamic label - larger font
-        self.keyword_label = QLabel("Add Tag to All")
-        self.keyword_label.setFont(QFont("Arial", 12))
-        self.keyword_entry = QLineEdit()
-        self.keyword_entry.setFont(QFont("Arial", 12))
-        self.keyword_entry.setMinimumHeight(32)
-        self.keyword_entry.setPlaceholderText("Add tag to images...")
-        self.keyword_entry.returnPressed.connect(self.parent.event_handlers.append_keywords)
+        self.select_folder_btn.clicked.connect(self.parent.event_handlers.select_folder)
         
         # Add to control layout
         control_layout.addWidget(self.select_folder_btn)
-        control_layout.addWidget(self.keyword_label)
-        control_layout.addWidget(self.keyword_entry, 1)  # Stretch
-        
-        # Connect button signals
-        self.select_folder_btn.clicked.connect(self.parent.event_handlers.select_folder)
+        control_layout.addStretch()  # Push everything to the left
         
         # Splitter for table and tag/image view
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -753,15 +741,15 @@ class UtilsTab(QWidget):
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         utils_layout.addWidget(main_splitter)
         
-        # Left panel - Existing Image Processing Tools
+        # Left panel - Image Processing Tools
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        # Image Processing Section (shrunk)
+        # Image Processing Section
         processing_group = QGroupBox("Image Processing")
         processing_layout = QVBoxLayout(processing_group)
         
-        # Fix Images section (compact)
+        # Fix Images section
         fix_section = QGroupBox("Fix Images")
         fix_layout = QVBoxLayout(fix_section)
         
@@ -779,14 +767,14 @@ class UtilsTab(QWidget):
         fix_scope_layout.addWidget(self.fix_selected_radio)
         fix_layout.addLayout(fix_scope_layout)
         
-        # Fix Images button (smaller)
+        # Fix Images button
         self.fix_images_btn = QPushButton("Fix Images")
         self.fix_images_btn.clicked.connect(self.parent.event_handlers.fix_images)
         fix_layout.addWidget(self.fix_images_btn)
         
         processing_layout.addWidget(fix_section)
         
-        # Mass Rename Section (compact)
+        # Mass Rename Section
         rename_section = QGroupBox("Mass Rename")
         rename_layout = QVBoxLayout(rename_section)
         
@@ -804,7 +792,7 @@ class UtilsTab(QWidget):
         rename_scope_layout.addWidget(self.rename_selected_radio)
         rename_layout.addLayout(rename_scope_layout)
         
-        # Prefix input (compact)
+        # Prefix input
         prefix_layout = QHBoxLayout()
         prefix_label = QLabel("Prefix:")
         self.prefix_entry = QLineEdit()
@@ -814,14 +802,19 @@ class UtilsTab(QWidget):
         prefix_layout.addWidget(self.prefix_entry, 1)
         rename_layout.addLayout(prefix_layout)
         
-        # Rename button (smaller)
+        # NEW: Scramble order checkbox
+        self.scramble_order_checkbox = QCheckBox("Scramble image order (adds random letters)")
+        self.scramble_order_checkbox.setToolTip("Adds random letters to filenames to scramble training order\nExample: portrait_a001.jpg, portrait_m002.jpg, portrait_c003.jpg")
+        rename_layout.addWidget(self.scramble_order_checkbox)
+        
+        # Rename button
         self.mass_rename_btn = QPushButton("Rename Images")
         self.mass_rename_btn.clicked.connect(self.parent.event_handlers.mass_rename_images)
         rename_layout.addWidget(self.mass_rename_btn)
         
         processing_layout.addWidget(rename_section)
         
-        # Dataset Augmentation Section (compact)
+        # Dataset Augmentation Section
         augment_section = QGroupBox("Dataset Augmentation")
         augment_layout = QVBoxLayout(augment_section)
         
@@ -839,7 +832,7 @@ class UtilsTab(QWidget):
         dup_scope_layout.addWidget(self.dup_selected_radio)
         augment_layout.addLayout(dup_scope_layout)
         
-        # Create Duplicates button (smaller)
+        # Create Duplicates button
         self.create_duplicates_btn = QPushButton("Create Duplicates")
         self.create_duplicates_btn.clicked.connect(self.parent.event_handlers.create_duplicates)
         augment_layout.addWidget(self.create_duplicates_btn)

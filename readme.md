@@ -8,6 +8,7 @@ This application provides a complete workflow for dataset preparation, combining
 
 **Perfect for preparing training data for image generation models like Stable Diffusion, DALL-E, and other diffusion models.**
 
+
 ![GUI Screenshot](ig_gui1.png)
 ![GUI Screenshot](ig_gui2.png)
 
@@ -23,6 +24,7 @@ This application provides a complete workflow for dataset preparation, combining
 ### 🛠️ **Image Processing (Utils Tab - Left Panel)**
 - **Fix Images**: Resize, pad, and standardize image dimensions (512/1024/2048px)
 - **Mass Rename**: Batch rename with custom prefixes and sequential numbering
+- **🆕 Order Scrambling**: Randomize training order with alpha characters (e.g., `name_a001.jpg`, `name_m002.jpg`, `name_c003.jpg`)
 - **Dataset Augmentation**: Create duplicates with transformations:
   - Simple duplication (`_dup` suffix)
   - Horizontal flip (`_flipHor`)
@@ -30,11 +32,18 @@ This application provides a complete workflow for dataset preparation, combining
   - 180° rotation (`_flipVert`)
 
 ### 🤖 **AI Description Enhancement (Utils Tab - Right Panel)**
-- **oLLama Integration**: Connect to local oLLama server for description rephrasing
+-
 - **Custom Prompts**: Full control over AI rephrasing instructions
 - **Test Interface**: Preview AI output before batch processing
 - **Batch Processing**: Rephrase descriptions while preserving names and details
 - **WSL Support**: Configurable server/port for cross-platform development
+
+### 🏷️ **Advanced Tag System**
+- **Tag Scrambling**: Randomize tag order to create training variety
+- **Keyword Tags**: Mark important tags to always appear first
+- **Visual Tag Chips**: Color-coded tags (red=keyword, green=selected)
+- **Batch Tag Operations**: Apply tags to multiple images at once
+- **Tag Migration**: Converts existing descriptions to tag format
 
 ### 🎯 **Scope-Aware Operations**
 Every utility respects your selection:
@@ -47,26 +56,20 @@ Every utility respects your selection:
 - **Python 3.8+**
 - **PyQt6**: Modern GUI framework
 - **PIL/Pillow**: Image processing
-- **Requests**: oLLama API communication (optional)
+-
 
 ### Installation
 ```bash
 pip install PyQt6 pillow requests
 ```
 
-### For oLLama Integration (Optional)
-```bash
-# Install oLLama (https://ollama.ai)
-# Then pull a model:
-ollama pull llama3.2:3b
-ollama serve
-```
+
 
 ## Quick Start
 
 ```bash
 # Clone and run
-git clone [repository]
+git clone https://github.com/scsuvizlab/ImageDatasetManager.git
 cd image-gallery
 python image_gallery.py
 ```
@@ -87,24 +90,33 @@ python image_gallery.py
 - **Scope Selection**: Choose "All" or "Selected Only" for each operation
 - **Visual Feedback**: Green status bar shows current selection
 
-### oLLama Setup
+### 🆕 **Order Scrambling for Training**
 
-#### Standard Setup (Linux/Windows)
-```bash
-ollama serve
-# Server: localhost, Port: 11434
+The new order scrambling feature helps randomize training order by adding random letters to filenames:
+
+**Standard Naming:**
+```
+portrait_001.jpg
+portrait_002.jpg
+portrait_003.jpg
 ```
 
-#### WSL Setup (Linux on Windows)
-```powershell
-# In Windows PowerShell:
-$env:OLLAMA_HOST="0.0.0.0:11434"
-ollama serve
-
-# In WSL, find Windows host IP:
-ip route show | grep default
-# Use that IP (e.g., 172.23.64.1) in the Server field
+**With Order Scrambling:**
 ```
+portrait_a001.jpg
+portrait_m002.jpg
+portrait_c003.jpg
+```
+
+This prevents models from learning filename-based patterns and ensures truly random training order.
+
+**How to Use:**
+1. Go to Utils tab → Mass Rename section
+2. Enter your desired prefix
+3. ✅ Check "Scramble image order (adds random letters)"
+4. Click "Rename Images"
+
+
 
 ### File Format Support
 
@@ -119,20 +131,24 @@ ip route show | grep default
 
 ## Advanced Features
 
-### Custom AI Prompts
-
-Default rephrasing prompt:
-```
-Rephrase the following image description. Keep all specific names, details, and technical terms exactly the same. Only change the phrasing and sentence structure to make it sound different while preserving all information. Return only the rephrased description with no additional text:
-
-{description}
-```
 
 **Customize for your needs:**
 - Art style analysis
 - Character-focused descriptions  
 - Technical specifications
 - Creative variations
+
+### Tag System Features
+
+**Keyword Tags**: Mark critical tags to always appear first in descriptions
+**Tag Scrambling**: Randomize tag order while preserving content:
+- Preserve first tag (recommended)
+- Fully randomize all tags
+
+**Visual Indicators**:
+- 🔴 Red chips = Keyword tags
+- 🟢 Green chips = Selected tags
+- Right-click chips to set/remove keywords
 
 ### Batch Keywords
 
@@ -155,8 +171,11 @@ Add common elements to all descriptions:
 image_gallery/
 ├── image_gallery.py      # Main application (300 lines)
 ├── data_manager.py       # Data loading/saving (200 lines)  
-├── image_processor.py    # Image processing (350 lines)
+├── image_processor.py    # Image processing (400 lines)
 ├── dialogs.py           # UI dialogs (150 lines)
+├── ui_components.py     # UI widgets and layout (800 lines)
+├── event_handlers.py    # Event handling logic (500 lines)
+├── tag_manager.py       # Tag system management (300 lines)
 └── README.md            # Documentation
 ```
 
@@ -171,6 +190,7 @@ image_gallery/
 - **Ctrl + +**: Increase font size
 - **Ctrl + -**: Decrease font size
 - **Ctrl + 0**: Reset font size to default
+- **F5**: Refresh gallery
 
 ## Common Workflows
 
@@ -180,11 +200,19 @@ image_gallery/
 3. Optionally add rotations for abstract content
 4. Result: 20-80 images with preserved descriptions
 
-### Description Variety
-1. Load dataset with repetitive descriptions
-2. Select images with similar descriptions
-3. Use oLLama "Rephrase Selected Only"
-4. Review and save enhanced dataset
+### Training Order Randomization
+1. Load your dataset with any naming convention
+2. Go to Utils → Mass Rename
+3. Enter a training-friendly prefix (e.g., "train_")
+4. ✅ Enable "Scramble image order"
+5. Rename to get randomized training order
+
+
+### Tag System Migration
+1. Load dataset with comma-separated descriptions
+2. App automatically converts to tag format
+3. Set keyword tags for important subjects
+4. Use tag scrambling to create variety
 
 ### Dataset Standardization
 1. Load mixed-size images
@@ -194,34 +222,13 @@ image_gallery/
 
 ## Troubleshooting
 
-### oLLama Connection Issues
-
-**"Cannot connect to oLLama"**
-```bash
-# Check if oLLama is running
-ollama list
-
-# Start if needed
-ollama serve
-
-# For WSL users - bind to all interfaces
-$env:OLLAMA_HOST="0.0.0.0:11434"
-ollama serve
-```
-
-**"No models found"**
-```bash
-# Install a model
-ollama pull llama3.2:3b
-ollama pull llama3:8b
-```
-
 ### Common Issues
 
 **Images not loading**: Check file permissions and formats
 **Description encoding**: Files saved with UTF-8 encoding
 **Memory usage**: Close application between large datasets
 **WSL networking**: Use Windows host IP instead of localhost
+**Scrambling conflicts**: Existing files with same scrambled names
 
 ## Best Practices
 
@@ -230,6 +237,12 @@ ollama pull llama3:8b
 - Keep original images separate from processed versions
 - Backup description files before AI processing
 - Test operations on small batches first
+
+### Training Optimization
+- Use order scrambling for datasets larger than 100 images
+- Combine with tag scrambling for maximum variety
+- Test training with scrambled vs sequential naming
+- Monitor model performance with different orderings
 
 ### AI Enhancement
 - Always test prompts with sample descriptions
@@ -243,15 +256,16 @@ ollama pull llama3:8b
 - Close other applications during intensive processing
 - Save work frequently during long sessions
 
-## Future Enhancements
+## What's New
 
-**Planned Features:**
-- Additional AI model integrations (OpenAI, Claude)
-- Advanced filtering and search capabilities
-- Export to ML framework formats (HuggingFace, COCO)
-- Automated quality scoring and duplicate detection
-- Cloud storage integration
-- Plugin system for custom transformations
+### Version 2.1 - Order Scrambling Update
+- **🆕 Image Order Scrambling**: Randomize training order with alpha characters
+- **Enhanced Mass Rename**: New checkbox option for scrambling
+- **Improved Training Workflows**: Better support for ML training pipelines
+- **Conflict Detection**: Prevents naming conflicts during scrambling
+- **Progress Feedback**: Real-time status updates during renaming
+
+## Future Enhancements
 
 ## Contributing
 
@@ -261,6 +275,7 @@ Contributions welcome! Areas of interest:
 - Export format support
 - UI/UX improvements
 - Performance optimizations
+- Training pipeline integrations
 
 ## License
 
@@ -268,4 +283,4 @@ Open source under the MIT License.
 
 ---
 
-**Built for the AI training community** - streamlining the dataset preparation process with intelligent tools and flexible workflows.
+**Built for the AI training community** - streamlining the dataset preparation process with intelligent tools, flexible workflows, and optimized training pipelines.

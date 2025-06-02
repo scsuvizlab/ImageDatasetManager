@@ -6,6 +6,8 @@ Image processing utilities for the Image Gallery application
 import os
 import json
 import shutil
+import random
+import string
 from PIL import Image
 from PyQt6.QtWidgets import QApplication, QProgressDialog, QMessageBox
 from PyQt6.QtCore import Qt
@@ -299,7 +301,7 @@ class ImageProcessor:
             'same_folder': input_folder == output_folder
         }
     
-    def mass_rename_images(self, folder_path, prefix, images_to_process=None, status_callback=None):
+    def mass_rename_images(self, folder_path, prefix, images_to_process=None, scramble_order=False, status_callback=None):
         """
         Rename images in a folder with a new prefix and sequential numbers
         
@@ -307,6 +309,7 @@ class ImageProcessor:
             folder_path: Path to folder containing images
             prefix: New prefix for filenames
             images_to_process: List of image data dicts to process (if None, processes all)
+            scramble_order: If True, adds random alpha characters to scramble order
             status_callback: Function to call with status updates
         
         Returns:
@@ -329,8 +332,13 @@ class ImageProcessor:
         if num_digits < 3:
             num_digits = 3  # Minimum 3 digits (001, 002, etc.)
         
+        # Generate scramble characters if needed
+        scramble_chars = []
+        if scramble_order:
+            scramble_chars = self._generate_scramble_characters(len(image_files))
+        
         # Check for potential naming conflicts
-        conflicts = self._check_rename_conflicts(folder_path, prefix, image_files, num_digits)
+        conflicts = self._check_rename_conflicts(folder_path, prefix, image_files, num_digits, scramble_chars)
         if conflicts:
             return {'error': f"Naming conflicts detected. These files already exist: {', '.join(conflicts[:5])}{'...' if len(conflicts) > 5 else ''}"}
         
@@ -362,7 +370,14 @@ class ImageProcessor:
             try:
                 # Generate new filename
                 file_extension = os.path.splitext(old_filename)[1]
-                new_filename = f"{prefix}{str(i + 1).zfill(num_digits)}{file_extension}"
+                
+                if scramble_order:
+                    # Include scramble character: prefix_a001.jpg
+                    scramble_char = scramble_chars[i]
+                    new_filename = f"{prefix}_{scramble_char}{str(i + 1).zfill(num_digits)}{file_extension}"
+                else:
+                    # Standard numbering: prefix_001.jpg
+                    new_filename = f"{prefix}_{str(i + 1).zfill(num_digits)}{file_extension}"
                 
                 old_path = os.path.join(folder_path, old_filename)
                 new_path = os.path.join(folder_path, new_filename)
@@ -402,8 +417,37 @@ class ImageProcessor:
             'renamed_images': renamed_images,
             'renamed_descriptions': renamed_descriptions,
             'errors': errors,
-            'total_images': len(image_files)
+            'total_images': len(image_files),
+            'scrambled': scramble_order
         }
+    
+    def _generate_scramble_characters(self, count):
+        """
+        Generate random alphabetic characters for scrambling
+        
+        Args:
+            count: Number of characters needed
+        
+        Returns:
+            List of single characters with no duplicates
+        """
+        # Start with all lowercase letters
+        available_chars = list(string.ascii_lowercase)
+        random.shuffle(available_chars)
+        
+        scramble_chars = []
+        char_index = 0
+        
+        for i in range(count):
+            # If we've used all letters, reshuffle and start over
+            if char_index >= len(available_chars):
+                random.shuffle(available_chars)
+                char_index = 0
+            
+            scramble_chars.append(available_chars[char_index])
+            char_index += 1
+        
+        return scramble_chars
     
     def _upscale_small_image(self, img, target_size):
         """Upscale a small image to meet minimum size requirements"""
@@ -579,14 +623,21 @@ class ImageProcessor:
         except Exception as e:
             print(f"Error processing JSON file: {str(e)}")
     
-    def _check_rename_conflicts(self, folder_path, prefix, image_files, num_digits):
+    def _check_rename_conflicts(self, folder_path, prefix, image_files, num_digits, scramble_chars=None):
         """Check if the new filenames would conflict with existing files"""
         conflicts = []
         existing_files = set(os.listdir(folder_path))
         
         for i, old_filename in enumerate(image_files):
             file_extension = os.path.splitext(old_filename)[1]
-            new_filename = f"{prefix}{str(i + 1).zfill(num_digits)}{file_extension}"
+            
+            if scramble_chars:
+                # Include scramble character
+                scramble_char = scramble_chars[i] if i < len(scramble_chars) else 'z'
+                new_filename = f"{prefix}_{scramble_char}{str(i + 1).zfill(num_digits)}{file_extension}"
+            else:
+                # Standard numbering
+                new_filename = f"{prefix}_{str(i + 1).zfill(num_digits)}{file_extension}"
             
             # Skip if this would be renaming to itself
             if new_filename == old_filename:
